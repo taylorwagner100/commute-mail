@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Commute Mail</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --text:#e6edf3; --dim:#8b949e; --accent:#3fb950; --blue:#58a6ff; --amber:#d29922; --red:#f85149; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,system-ui,sans-serif;
+         min-height:100dvh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; }
+  header h1 { font-size:18px; font-weight:600; }
+  header button { background:none; border:none; color:var(--dim); font-size:22px; padding:6px; cursor:pointer; }
+  main { flex:1; display:flex; flex-direction:column; align-items:center; padding:8px 18px 18px; gap:16px; }
+
+  #orb { width:150px; height:150px; border-radius:50%; border:none; cursor:pointer;
+         background:radial-gradient(circle at 35% 30%, #2ea043, #196c2e); color:#fff;
+         font-size:17px; font-weight:700; flex-shrink:0; transition:transform .15s;
+         box-shadow:0 0 0 0 rgba(63,185,80,.4); }
+  #orb:active { transform:scale(.95); }
+  body[data-state="listening"] #orb { background:radial-gradient(circle at 35% 30%, #2ea043, #196c2e); animation:pulse 1.4s infinite; }
+  body[data-state="speaking"]  #orb { background:radial-gradient(circle at 35% 30%, #388bfd, #1f5eaa); }
+  body[data-state="thinking"]  #orb { background:radial-gradient(circle at 35% 30%, #d29922, #9a6f16); }
+  body[data-state="error"]     #orb { background:radial-gradient(circle at 35% 30%, #f85149, #a92e26); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(63,185,80,.45)} 70%{box-shadow:0 0 0 28px rgba(63,185,80,0)} 100%{box-shadow:0 0 0 0 rgba(63,185,80,0)} }
+
+  #status { font-size:22px; font-weight:600; text-align:center; min-height:30px; }
+  #email-card { display:none; width:100%; max-width:520px; background:var(--card); border:1px solid #30363d;
+                border-radius:14px; padding:16px 18px; }
+  #email-card .from { font-size:20px; font-weight:700; }
+  #email-card .subject { font-size:17px; color:var(--dim); margin-top:4px; }
+  #email-card .count { font-size:13px; color:var(--dim); margin-top:8px; }
+
+  #log { width:100%; max-width:520px; flex:1; overflow-y:auto; font-size:15px; display:flex; flex-direction:column; gap:8px; }
+  #log div { padding:8px 12px; border-radius:10px; max-width:90%; white-space:pre-wrap; }
+  #log .app  { background:var(--card); align-self:flex-start; }
+  #log .user { background:#1f3a5f; align-self:flex-end; }
+
+  footer { padding:10px 18px calc(14px + env(safe-area-inset-bottom)); display:flex; gap:8px; }
+  #text-input { flex:1; background:var(--card); border:1px solid #30363d; border-radius:10px;
+                color:var(--text); font-size:16px; padding:12px; display:none; }
+  #kbd-toggle { background:var(--card); border:1px solid #30363d; border-radius:10px; color:var(--dim);
+                font-size:18px; padding:0 14px; cursor:pointer; }
+
+  dialog { background:var(--card); color:var(--text); border:1px solid #30363d; border-radius:14px;
+           padding:22px; width:min(92vw,420px); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog h2 { font-size:17px; margin-bottom:14px; }
+  dialog label { display:block; font-size:13px; color:var(--dim); margin:12px 0 4px; }
+  dialog input { width:100%; background:var(--bg); border:1px solid #30363d; border-radius:8px;
+                 color:var(--text); font-size:15px; padding:10px; }
+  dialog .note { font-size:12px; color:var(--dim); margin-top:12px; line-height:1.5; }
+  dialog .row { display:flex; gap:10px; margin-top:18px; }
+  dialog .row button { flex:1; padding:12px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; }
+  #save-btn { background:var(--accent); color:#fff; }
+  #close-btn { background:#30363d; color:var(--text); }
+</style>
+</head>
+<body data-state="idle">
+
+<header>
+  <h1>Commute Mail</h1>
+  <button id="settings-btn" aria-label="Settings">&#9881;</button>
+</header>
+
+<main>
+  <button id="orb">Start</button>
+  <div id="status">Tap Start when you're ready</div>
+  <div id="email-card">
+    <div class="from"></div>
+    <div class="subject"></div>
+    <div class="count"></div>
+  </div>
+  <div id="log" aria-live="polite"></div>
+</main>
+
+<footer>
+  <input id="text-input" type="text" placeholder="Type instead of speaking&hellip;" autocomplete="off">
+  <button id="kbd-toggle" aria-label="Toggle keyboard input">&#9000;</button>
+</footer>
+
+<dialog id="settings">
+  <h2>Settings</h2>
+  <label>Google OAuth Client ID</label>
+  <input id="cfg-client-id" placeholder="xxxx.apps.googleusercontent.com">
+  <label>Anthropic API key</label>
+  <input id="cfg-api-key" type="password" placeholder="sk-ant-...">
+  <label>Your name (for email sign-off)</label>
+  <input id="cfg-name" placeholder="Taylor">
+  <label>Speech rate (0.8 &ndash; 1.5)</label>
+  <input id="cfg-rate" type="number" step="0.1" min="0.8" max="1.5">
+  <div class="note">Keys are stored only in this browser's localStorage on your device and sent only to Google / Anthropic APIs. Setup steps are in the README.</div>
+  <div class="row">
+    <button id="close-btn">Close</button>
+    <button id="save-btn">Save</button>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+
+/* ---------- config ---------- */
+const params = new URLSearchParams(location.search);
+const DEMO = params.has('demo');
+const cfg = {
+  clientId: localStorage.getItem('cm_client_id') || '',
+  apiKey:   localStorage.getItem('cm_api_key') || '',
+  name:     localStorage.getItem('cm_name') || 'Me',
+  rate:     parseFloat(localStorage.getItem('cm_rate') || '1.1'),
+};
+
+/* ---------- ui ---------- */
+const $ = id => document.getElementById(id);
+const orb = $('orb'), statusEl = $('status'), logEl = $('log'), card = $('email-card');
+let textMode = DEMO;           // demo/testing drives the app through the text box
+let muted = DEMO;              // demo runs silent; the log records what would be spoken
+
+function setState(s, text) {
+  document.body.dataset.state = s;
+  if (text !== undefined) statusEl.textContent = text;
+  orb.textContent = { idle:'Start', listening:'Listening', speaking:'Stop', thinking:'Stop', error:'Start' }[s] || 'Stop';
+}
+function log(who, text) {
+  const d = document.createElement('div');
+  d.className = who; d.textContent = text;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function showEmail(email, idx, total) {
+  if (!email) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  card.querySelector('.from').textContent = email.fromName;
+  card.querySelector('.subject').textContent = email.subject;
+  card.querySelector('.count').textContent = `Email ${idx + 1} of ${total}`;
+}
+
+/* ---------- speech out ---------- */
+let running = false; // whole-session flag; cleared by "stop" or tapping the orb
+
+function speak(text) {
+  log('app', text);
+  if (muted) return Promise.resolve();
+  return new Promise(resolve => {
+    setState('speaking');
+    // iOS cuts off long utterances: split into sentence-sized chunks
+    const chunks = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
+    let i = 0;
+    const next = () => {
+      if (i >= chunks.length || !running) return resolve();
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      u.rate = cfg.rate;
+      u.onend = next;
+      u.onerror = next;
+      speechSynthesis.speak(u);
+    };
+    speechSynthesis.cancel();
+    next();
+  });
+}
+
+/* ---------- speech in ---------- */
+let pendingResolve = null; // lets the text box answer any active listen()
+
+function listen(timeoutMs = 10000) {
+  return new Promise(resolve => {
+    setState('listening', statusEl.textContent);
+    let done = false;
+    const finish = v => {
+      if (done) return;
+      done = true;
+      pendingResolve = null;
+      if (v) log('user', v);
+      resolve(v);
+    };
+    pendingResolve = finish;
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (textMode || !SR) { setTimeout(() => finish(null), timeoutMs); return; }
+
+    const r = new SR();
+    r.lang = navigator.language || 'en-US';
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    r.onresult = e => finish(e.results[0][0].transcript.trim());
+    r.onerror = () => finish(null);
+    r.onend = () => finish(null);
+    const t = setTimeout(() => { try { r.abort(); } catch (e) {} finish(null); }, timeoutMs);
+    const origFinish = finish;
+    pendingResolve = v => { clearTimeout(t); try { r.abort(); } catch (e) {} origFinish(v); };
+    try { r.start(); } catch (e) { finish(null); }
+  });
+}
+
+// Ask a question, listen, retry once on silence. Returns transcript or null.
+async function ask(prompt) {
+  await speak(prompt);
+  for (let attempt = 0; attempt < 2 && running; attempt++) {
+    const heard = await listen();
+    if (heard) return heard;
+    if (attempt === 0 && running) await speak("I didn't catch that.");
+  }
+  return null;
+}
+
+/* ---------- intents ---------- */
+function intent(t) {
+  t = (t || '').toLowerCase();
+  const has = (...ws) => ws.some(w => t.includes(w));
+  if (has('stop', 'pause', "i'm done", 'im done', 'quit', 'exit')) return 'stop';
+  if (has('send')) return 'send';
+  if (has('cancel', 'never mind', 'nevermind', 'forget it')) return 'cancel';
+  if (has('reply', 'respond', 'answer')) return 'reply';
+  if (has('archive', 'delete')) return 'archive';
+  if (has('skip', 'next', 'pass')) return 'skip';
+  if (has('repeat', 'say that again', 'one more time')) return 'repeat';
+  if (has('change', 'edit', 'revise', 'different')) return 'change';
+  if (has('read')) return 'read';
+  if (has('yes', 'yeah', 'yep', 'sure', 'correct', 'do it')) return 'yes';
+  if (has('no ', 'nope') || t === 'no') return 'no';
+  return null;
+}
+
+/* ---------- gmail ---------- */
+function b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecode(data) {
+  const bin = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+function encodeHeader(s) {
+  return /^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64urlEncode(s).replace(/-/g, '+').replace(/_/g, '/')}?=`;
+}
+
+const gmail = {
+  token: null,
+  tokenClient: null,
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      if (!cfg.clientId) return reject(new Error('Add your Google Client ID in Settings first.'));
+      const init = () => {
+        this.tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: cfg.clientId,
+          scope: 'https://www.googleapis.com/auth/gmail.modify',
+          callback: resp => resp.access_token ? (this.token = resp.access_token, resolve()) : reject(new Error('Sign-in failed')),
+          error_callback: () => reject(new Error('Sign-in was cancelled')),
+        });
+        this.tokenClient.requestAccessToken();
+      };
+      if (window.google?.accounts) return init();
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = init;
+      s.onerror = () => reject(new Error('Could not load Google sign-in'));
+      document.head.appendChild(s);
+    });
+  },
+
+  async api(method, path, body) {
+    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 401) { this.token = null; throw new Error('Gmail session expired — tap Start to reconnect.'); }
+    if (!r.ok) throw new Error(`Gmail error ${r.status}`);
+    return r.json();
+  },
+
+  async listUnread(max = 10) {
+    const list = await this.api('GET', `messages?q=${encodeURIComponent('in:inbox is:unread')}&maxResults=${max}`);
+    if (!list.messages) return [];
+    return Promise.all(list.messages.map(m => this.getMessage(m.id)));
+  },
+
+  async getMessage(id) {
+    const m = await this.api('GET', `messages/${id}?format=full`);
+    const header = n => m.payload.headers.find(h => h.name.toLowerCase() === n)?.value || '';
+    const from = header('from');
+    const match = from.match(/^\s*"?([^"<]*)"?\s*<(.+)>\s*$/);
+    return {
+      id: m.id,
+      threadId: m.threadId,
+      fromName: (match ? match[1].trim() : from) || from,
+      fromAddr: match ? match[2] : from,
+      replyTo: header('reply-to') || null,
+      subject: header('subject') || '(no subject)',
+      messageId: header('message-id'),
+      snippet: m.snippet || '',
+      body: extractBody(m.payload),
+    };
+  },
+
+  async sendReply(email, bodyText) {
+    const subject = /^re:/i.test(email.subject) ? email.subject : 'Re: ' + email.subject;
+    const headers = [
+      `To: ${email.replyTo || email.fromAddr}`,
+      `Subject: ${encodeHeader(subject)}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+    ];
+    if (email.messageId) headers.push(`In-Reply-To: ${email.messageId}`, `References: ${email.messageId}`);
+    const encodedBody = b64urlEncode(bodyText).replace(/-/g, '+').replace(/_/g, '/');
+    const rfc822 = headers.join('\r\n') + '\r\n\r\n' + encodedBody;
+    await this.api('POST', 'messages/send', { raw: b64urlEncode(rfc822), threadId: email.threadId });
+  },
+
+  archive(email) {
+    return this.api('POST', `messages/${email.id}/modify`, { removeLabelIds: ['UNREAD', 'INBOX'] });
+  },
+
+  markRead(email) {
+    return this.api('POST', `messages/${email.id}/modify`, { removeLabelIds: ['UNREAD'] });
+  },
+};
+
+function extractBody(payload) {
+  let plain = '', html = '';
+  const stack = [payload];
+  while (stack.length) {
+    const p = stack.pop();
+    if (p.parts) stack.push(...p.parts);
+    const data = p.body && p.body.data;
+    if (!data) continue;
+    if (p.mimeType === 'text/plain') plain += b64urlDecode(data);
+    else if (p.mimeType === 'text/html') html += b64urlDecode(data);
+  }
+  let body = plain || html
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  body = body.split(/\r?\n/).filter(l => !l.trim().startsWith('>')).join('\n');  // strip quoted replies
+  body = body.replace(/On [^\n]{5,100} wrote:[\s\S]*$/, '');                     // strip trailing quote header
+  return body.replace(/\s+/g, ' ').trim();
+}
+
+/* ---------- claude ---------- */
+const ai = {
+  system(email) {
+    return `You are a hands-free email assistant for someone who is driving. Everything you say is read aloud, so keep responses short, natural, and conversational — one to three sentences unless asked for more.
+
+Help the user understand this email and craft a reply. When the user tells you what to say (or asks you to revise), write the complete reply and wrap ONLY the email body in <draft></draft> tags — plain text, no subject line, signed off as ${cfg.name}. Keep drafts concise and match the tone the user asks for. If the user is just asking a question or thinking out loud, answer briefly with no draft.
+
+The email being discussed:
+From: ${email.fromName} <${email.fromAddr}>
+Subject: ${email.subject}
+Body: ${email.body.slice(0, 3000)}`;
+  },
+
+  async chat(email, messages) {
+    if (!cfg.apiKey) {
+      // ponytail: offline fallback so the flow works without a key — draft echoes the instruction
+      const want = messages[messages.length - 1].content;
+      return `<draft>Hi ${email.fromName.split(' ')[0]},\n\n${want}\n\nBest,\n${cfg.name}</draft>`;
+    }
+    setState('thinking', 'Thinking…');
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': cfg.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1024,
+        system: this.system(email),
+        messages,
+      }),
+    });
+    if (!r.ok) throw new Error(`Claude API error ${r.status}${r.status === 401 ? ' — check your API key in Settings' : ''}`);
+    const data = await r.json();
+    return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  },
+};
+
+/* ---------- demo mocks ---------- */
+if (DEMO) {
+  const demoEmails = [
+    { id: 'd1', threadId: 't1', fromName: 'Sarah Chen', fromAddr: 'sarah@acme.com', replyTo: null,
+      subject: 'Q3 budget review — need your numbers by Friday',
+      messageId: '<a@acme.com>', snippet: 'Hi, can you send over the Q3 projections…',
+      body: 'Hi, can you send over the Q3 projections before our review on Friday? Finance needs them consolidated by end of week. Thanks, Sarah' },
+    { id: 'd2', threadId: 't2', fromName: 'Mike Torres', fromAddr: 'mike@vendorco.com', replyTo: null,
+      subject: 'Renewal contract attached',
+      messageId: '<b@vendorco.com>', snippet: 'Please find the renewal contract attached…',
+      body: 'Please find the renewal contract attached for your review. Pricing is unchanged from last year. Let me know if you have questions. Mike' },
+    { id: 'd3', threadId: 't3', fromName: 'HR Team', fromAddr: 'hr@acme.com', replyTo: null,
+      subject: 'Open enrollment closes next week',
+      messageId: '<c@acme.com>', snippet: 'Reminder: benefits open enrollment closes…',
+      body: 'Reminder: benefits open enrollment closes next Wednesday. Log in to the portal to confirm your selections.' },
+  ];
+  gmail.connect = async () => {};
+  gmail.listUnread = async () => demoEmails.slice();
+  gmail.sendReply = async (email, body) => { log('app', `[demo] SENT to ${email.fromAddr}:\n${body}`); };
+  gmail.archive = async email => { log('app', `[demo] ARCHIVED: ${email.subject}`); };
+  gmail.markRead = async () => {};
+}
+
+/* ---------- main flow ---------- */
+async function replyFlow(email) {
+  const messages = [];
+  let draft = null;
+  let heard = await ask('What would you like to say?');
+  while (running) {
+    if (!heard) return 'cancelled';
+    const i = intent(heard);
+    if (i === 'stop') { running = false; return 'cancelled'; }
+    if (i === 'cancel') { await speak('Okay, cancelled.'); return 'cancelled'; }
+    if (i === 'send') {
+      if (!draft) { heard = await ask("There's no draft yet — what should the reply say?"); continue; }
+      await gmail.sendReply(email, draft);
+      await speak('Sent.');
+      return 'sent';
+    }
+    if (i === 'repeat' && draft) { heard = await ask(`The draft says: ${draft} … Send it, change it, or cancel?`); continue; }
+    if (i === 'change' && draft && heard.split(' ').length <= 4) {
+      // bare "change it" — get the actual instruction
+      heard = await ask('What should I change?');
+      continue;
+    }
+    // everything else goes to Claude: instructions, revisions, questions, discussion
+    messages.push({ role: 'user', content: heard });
+    let resp;
+    try { resp = await ai.chat(email, messages); }
+    catch (e) { await speak(e.message); return 'cancelled'; }
+    messages.push({ role: 'assistant', content: resp });
+    const m = resp.match(/<draft>([\s\S]*?)<\/draft>/);
+    const spoken = resp.replace(/<draft>[\s\S]*?<\/draft>/, '').trim();
+    if (m) {
+      draft = m[1].trim();
+      heard = await ask(`${spoken ? spoken + ' ' : ''}Here's the draft: ${draft} … Send it, change it, or cancel?`);
+    } else {
+      heard = await ask(spoken || 'Anything else?');
+    }
+  }
+  return 'cancelled';
+}
+
+async function triage() {
+  running = true;
+  try {
+    if (!gmail.token && !DEMO) {
+      setState('thinking', 'Connecting to Gmail…');
+      await gmail.connect();
+    }
+    setState('thinking', 'Checking your inbox…');
+    const emails = await gmail.listUnread();
+    if (!emails.length) { await speak('No unread emails. Enjoy the drive.'); return; }
+    await speak(`You have ${emails.length} unread email${emails.length > 1 ? 's' : ''}.`);
+
+    for (let i = 0; i < emails.length && running; i++) {
+      const email = emails[i];
+      showEmail(email, i, emails.length);
+      let announce = `Email ${i + 1}, from ${email.fromName}. Subject: ${email.subject}.`;
+      let heard = await ask(`${announce} Read, reply, archive, or skip?`);
+
+      let handled = false;
+      while (running && !handled) {
+        const act = intent(heard);
+        switch (act) {
+          case 'stop': running = false; break;
+          case 'skip': handled = true; break;
+          case 'repeat': heard = await ask(`${announce} Read, reply, archive, or skip?`); break;
+          case 'archive':
+            await gmail.archive(email);
+            await speak('Archived.');
+            handled = true;
+            break;
+          case 'read':
+            await speak(email.body ? email.body.slice(0, 1200) : email.snippet);
+            heard = await ask('Reply, archive, or next?');
+            break;
+          case 'reply': {
+            const result = await replyFlow(email);
+            if (result === 'sent') await gmail.markRead(email);
+            handled = true;
+            break;
+          }
+          default:
+            heard = await ask('Say read, reply, archive, skip, or stop.');
+            if (!heard) handled = true; // repeated silence: move on
+        }
+      }
+    }
+    if (running) await speak("That's all of them. Nice work.");
+  } catch (e) {
+    setState('error', e.message);
+    await speak(e.message);
+  } finally {
+    running = false;
+    showEmail(null);
+    setState('idle', "Tap Start when you're ready");
+  }
+}
+
+/* ---------- wiring ---------- */
+orb.addEventListener('click', () => {
+  if (running) {
+    running = false;
+    speechSynthesis.cancel();
+    if (pendingResolve) pendingResolve(null);
+    setState('idle', 'Stopped');
+  } else {
+    triage();
+  }
+});
+
+$('kbd-toggle').addEventListener('click', () => {
+  textMode = !textMode;
+  $('text-input').style.display = textMode ? 'block' : 'none';
+  if (textMode) $('text-input').focus();
+});
+$('text-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  if (!v) return;
+  e.target.value = '';
+  if (pendingResolve) pendingResolve(v);
+  else log('user', v + ' (no active prompt)');
+});
+
+const dlg = $('settings');
+$('settings-btn').addEventListener('click', () => {
+  $('cfg-client-id').value = cfg.clientId;
+  $('cfg-api-key').value = cfg.apiKey;
+  $('cfg-name').value = cfg.name;
+  $('cfg-rate').value = cfg.rate;
+  dlg.showModal();
+});
+$('close-btn').addEventListener('click', () => dlg.close());
+$('save-btn').addEventListener('click', () => {
+  cfg.clientId = $('cfg-client-id').value.trim();
+  cfg.apiKey = $('cfg-api-key').value.trim();
+  cfg.name = $('cfg-name').value.trim() || 'Me';
+  cfg.rate = Math.min(1.5, Math.max(0.8, parseFloat($('cfg-rate').value) || 1.1));
+  localStorage.setItem('cm_client_id', cfg.clientId);
+  localStorage.setItem('cm_api_key', cfg.apiKey);
+  localStorage.setItem('cm_name', cfg.name);
+  localStorage.setItem('cm_rate', String(cfg.rate));
+  dlg.close();
+});
+
+if (DEMO) {
+  $('text-input').style.display = 'block';
+  statusEl.textContent = 'Demo mode — type commands below';
+}
+</script>
+</body>
+</html>
