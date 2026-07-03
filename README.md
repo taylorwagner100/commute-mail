@@ -41,6 +41,13 @@ Create a key at [console.anthropic.com](https://console.anthropic.com/settings/k
 2. Share → **Add to Home Screen**.
 3. Tap **Start** once — approve the Google sign-in and mic permission.
 
+## Voice quality
+
+The default iOS voice is robotic. Two upgrades, in order of bang-for-buck:
+
+1. **Free — download a Premium voice** (recommended): iPhone Settings → Accessibility → Spoken Content → Voices → English → download **Ava (Premium)** or **Zoe (Premium)** (~200 MB). The app auto-detects it (or pick it explicitly under Settings → Device voice). Siri-quality, works offline.
+2. **ElevenLabs** (most natural): create a key at [elevenlabs.io](https://elevenlabs.io) (free tier: 10k characters/month) and paste it in Settings. The app then speaks with ElevenLabs' "Rachel" voice, falling back to the device voice if the request fails. Adds ~1s latency per utterance and requires signal.
+
 ## Notes
 
 - **Use Safari** (or the home-screen icon). Voice recognition uses Apple's built-in dictation.
