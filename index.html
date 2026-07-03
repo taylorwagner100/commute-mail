@@ -115,8 +115,8 @@ const cfg = {
 /* ---------- ui ---------- */
 const $ = id => document.getElementById(id);
 const orb = $('orb'), statusEl = $('status'), logEl = $('log'), card = $('email-card');
-let textMode = DEMO;           // demo/testing drives the app through the text box
-let muted = DEMO;              // demo runs silent; the log records what would be spoken
+let textMode = false;          // keyboard toggle; the automated test drives via the text box
+let muted = false;
 
 function setState(s, text) {
   document.body.dataset.state = s;
@@ -509,6 +509,8 @@ async function triage() {
 
 /* ---------- wiring ---------- */
 orb.addEventListener('click', () => {
+  // iOS unlocks speechSynthesis only from a user gesture — prime it here
+  if (!muted) { try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch (e) {} }
   if (running) {
     running = false;
     speechSynthesis.cancel();
@@ -556,7 +558,7 @@ $('save-btn').addEventListener('click', () => {
 
 if (DEMO) {
   $('text-input').style.display = 'block';
-  statusEl.textContent = 'Demo mode — type commands below';
+  statusEl.textContent = 'Demo mode — tap Start, then talk (or type)';
 }
 </script>
 </body>
