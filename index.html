@@ -6,57 +6,154 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Commute Mail</title>
+<meta name="theme-color" content="#06070b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0d1117; --card:#161b22; --text:#e6edf3; --dim:#8b949e; --accent:#3fb950; --blue:#58a6ff; --amber:#d29922; --red:#f85149; }
+  :root {
+    --bg:#06070b; --panel:rgba(255,255,255,.035); --line:rgba(255,255,255,.09);
+    --text:#f2f4ec; --dim:#8b93a1;
+    --volt:#c6ff4a; --cyan:#54d8ff; --amber:#ffb02e; --red:#ff5d5d;
+    --state:var(--volt);
+    --display:"Unbounded", system-ui, sans-serif;
+    --mono:"Spline Sans Mono", ui-monospace, "SF Mono", monospace;
+  }
+  body[data-state="speaking"] { --state:var(--cyan); }
+  body[data-state="thinking"] { --state:var(--amber); }
+  body[data-state="error"]    { --state:var(--red); }
+
   * { box-sizing:border-box; margin:0; }
-  body { background:var(--bg); color:var(--text); font-family:-apple-system,system-ui,sans-serif;
-         min-height:100dvh; display:flex; flex-direction:column; }
-  header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; }
-  header h1 { font-size:18px; font-weight:600; }
-  header button { background:none; border:none; color:var(--dim); font-size:22px; padding:6px; cursor:pointer; }
-  main { flex:1; display:flex; flex-direction:column; align-items:center; padding:8px 18px 18px; gap:16px; }
+  body { background:var(--bg); color:var(--text); font-family:var(--mono);
+         min-height:100dvh; display:flex; flex-direction:column; overflow-x:hidden; }
 
-  #orb { width:150px; height:150px; border-radius:50%; border:none; cursor:pointer;
-         background:radial-gradient(circle at 35% 30%, #2ea043, #196c2e); color:#fff;
-         font-size:17px; font-weight:700; flex-shrink:0; transition:transform .15s;
-         box-shadow:0 0 0 0 rgba(63,185,80,.4); }
-  #orb:active { transform:scale(.95); }
-  body[data-state="listening"] #orb { background:radial-gradient(circle at 35% 30%, #2ea043, #196c2e); animation:pulse 1.4s infinite; }
-  body[data-state="speaking"]  #orb { background:radial-gradient(circle at 35% 30%, #388bfd, #1f5eaa); }
-  body[data-state="thinking"]  #orb { background:radial-gradient(circle at 35% 30%, #d29922, #9a6f16); }
-  body[data-state="error"]     #orb { background:radial-gradient(circle at 35% 30%, #f85149, #a92e26); }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(63,185,80,.45)} 70%{box-shadow:0 0 0 28px rgba(63,185,80,0)} 100%{box-shadow:0 0 0 0 rgba(63,185,80,0)} }
+  /* ---- atmosphere: drifting aurora + film grain ---- */
+  body::before { content:""; position:fixed; inset:-25%; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(38% 45% at 18% 8%,  rgba(44,88,138,.30), transparent 70%),
+      radial-gradient(46% 42% at 85% 104%, color-mix(in srgb, var(--state) 16%, transparent), transparent 70%);
+    filter:blur(42px); animation:drift 26s ease-in-out infinite alternate; }
+  body::after { content:""; position:fixed; inset:0; z-index:4; pointer-events:none; opacity:.055;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E"); }
+  @keyframes drift { to { transform:translate3d(3%,2%,0) scale(1.07); } }
 
-  #status { font-size:22px; font-weight:600; text-align:center; min-height:30px; }
-  #email-card { display:none; width:100%; max-width:520px; background:var(--card); border:1px solid #30363d;
-                border-radius:14px; padding:16px 18px; }
-  #email-card .from { font-size:20px; font-weight:700; }
-  #email-card .subject { font-size:17px; color:var(--dim); margin-top:4px; }
-  #email-card .count { font-size:13px; color:var(--dim); margin-top:8px; }
+  header, main, footer { position:relative; z-index:1; }
 
-  #log { width:100%; max-width:520px; flex:1; overflow-y:auto; font-size:15px; display:flex; flex-direction:column; gap:8px; }
-  #log div { padding:8px 12px; border-radius:10px; max-width:90%; white-space:pre-wrap; }
-  #log .app  { background:var(--card); align-self:flex-start; }
-  #log .user { background:#1f3a5f; align-self:flex-end; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 6px; }
+  header h1 { font-family:var(--display); font-size:12px; font-weight:600; letter-spacing:.34em;
+              text-transform:uppercase; color:var(--dim); display:flex; align-items:center; gap:10px; }
+  header h1::before { content:""; width:8px; height:8px; border-radius:50%; flex-shrink:0;
+              background:var(--state); box-shadow:0 0 14px var(--state); animation:beacon 2.4s ease-in-out infinite; }
+  @keyframes beacon { 50% { opacity:.35; } }
+  header button { background:none; border:none; color:var(--dim); font-size:22px; padding:6px; cursor:pointer; transition:color .2s; }
+  header button:hover { color:var(--text); }
 
-  footer { padding:10px 18px calc(14px + env(safe-area-inset-bottom)); display:flex; gap:8px; }
-  #text-input { flex:1; background:var(--card); border:1px solid #30363d; border-radius:10px;
-                color:var(--text); font-size:16px; padding:12px; display:none; }
-  #kbd-toggle { background:var(--card); border:1px solid #30363d; border-radius:10px; color:var(--dim);
-                font-size:18px; padding:0 14px; cursor:pointer; }
+  main { flex:1; display:flex; flex-direction:column; align-items:center; padding:16px 20px 16px; gap:18px; }
 
-  dialog { background:var(--card); color:var(--text); border:1px solid #30363d; border-radius:14px;
-           padding:22px; width:min(92vw,420px); }
-  dialog::backdrop { background:rgba(0,0,0,.6); }
-  dialog h2 { font-size:17px; margin-bottom:14px; }
-  dialog label { display:block; font-size:13px; color:var(--dim); margin:12px 0 4px; }
-  dialog input { width:100%; background:var(--bg); border:1px solid #30363d; border-radius:8px;
-                 color:var(--text); font-size:15px; padding:10px; }
-  dialog .note { font-size:12px; color:var(--dim); margin-top:12px; line-height:1.5; }
-  dialog .row { display:flex; gap:10px; margin-top:18px; }
-  dialog .row button { flex:1; padding:12px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; }
-  #save-btn { background:var(--accent); color:#fff; }
-  #close-btn { background:#30363d; color:var(--text); }
+  /* ---- the orb: rotating plasma ring + glass core ---- */
+  #orb-wrap { position:relative; width:190px; height:190px; flex-shrink:0;
+              animation:arrive .7s cubic-bezier(.2,.8,.2,1) both; }
+  #orb-wrap::before { content:""; position:absolute; inset:-10px; border-radius:50%;
+    background:conic-gradient(from 0deg, transparent 12%, var(--state) 38%, transparent 64%,
+               color-mix(in srgb, var(--state) 45%, transparent) 82%, transparent);
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+    mask:radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+    animation:spin 4s linear infinite; opacity:.95; }
+  body[data-state="idle"] #orb-wrap::before { animation-duration:11s; opacity:.45; }
+  body[data-state="listening"] #orb-wrap::after { content:""; position:absolute; inset:-2px; border-radius:50%;
+    border:1.5px solid var(--state); animation:ripple 1.5s ease-out infinite; }
+  @keyframes spin   { to { transform:rotate(1turn); } }
+  @keyframes ripple { from { transform:scale(.96); opacity:.8; } to { transform:scale(1.38); opacity:0; } }
+  @keyframes arrive { from { opacity:0; transform:scale(.85); } }
+
+  #orb { position:absolute; inset:0; border-radius:50%; cursor:pointer;
+    border:1px solid color-mix(in srgb, var(--state) 35%, transparent);
+    background:radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--state) 32%, #0d1118), #090c12 72%);
+    color:var(--text); font-family:var(--display); font-size:14px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase;
+    box-shadow:0 0 70px -16px var(--state), inset 0 1px 0 rgba(255,255,255,.08);
+    transition:transform .15s, box-shadow .6s, background .6s; }
+  #orb:active { transform:scale(.94); }
+  body[data-state="listening"] #orb { animation:breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { transform:scale(1.035); } }
+
+  #status { font-family:var(--display); font-weight:500; font-size:17px; letter-spacing:.03em;
+            text-align:center; min-height:26px; line-height:1.4; max-width:540px;
+            color:color-mix(in srgb, var(--text) 86%, var(--state)); }
+
+  /* ---- speaking equalizer ---- */
+  #eq { display:none; align-items:flex-end; gap:5px; height:22px; }
+  body[data-state="speaking"] #eq { display:flex; }
+  #eq span { width:5px; height:100%; border-radius:3px; background:var(--state);
+             transform-origin:50% 100%; animation:eqb 1s ease-in-out infinite; }
+  #eq span:nth-child(2) { animation-delay:.15s; } #eq span:nth-child(3) { animation-delay:.3s; }
+  #eq span:nth-child(4) { animation-delay:.45s; } #eq span:nth-child(5) { animation-delay:.6s; }
+  @keyframes eqb { 0%,100% { transform:scaleY(.22); } 50% { transform:scaleY(1); } }
+
+  /* ---- email card: glass panel with live hairline ---- */
+  #email-card { display:none; width:100%; max-width:540px; position:relative; border-radius:18px;
+    padding:18px 20px; border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); animation:rise .4s both; }
+  #email-card::before { content:""; position:absolute; top:-1px; left:14%; right:14%; height:1px;
+    background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--state) 70%, transparent), transparent); }
+  #email-card .from { font-family:var(--display); font-size:21px; font-weight:600; }
+  #email-card .subject { font-size:14px; color:var(--dim); margin-top:6px; line-height:1.45; }
+  #email-card .count { display:inline-block; margin-top:12px; font-size:10.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:color-mix(in srgb, var(--volt) 80%, white);
+    background:color-mix(in srgb, var(--volt) 11%, transparent);
+    border:1px solid color-mix(in srgb, var(--volt) 30%, transparent);
+    border-radius:999px; padding:5px 12px; }
+
+  /* ---- transcript feed ---- */
+  #log { width:100%; max-width:540px; flex:1; overflow-y:auto; display:flex; flex-direction:column;
+         gap:8px; font-size:13.5px; line-height:1.55;
+         mask-image:linear-gradient(180deg, transparent, #000 24px);
+         -webkit-mask-image:linear-gradient(180deg, transparent, #000 24px); }
+  #log div { padding:9px 13px; border-radius:12px; max-width:92%; white-space:pre-wrap; animation:rise .3s both; }
+  #log .app  { align-self:flex-start; background:var(--panel);
+               border-left:2px solid color-mix(in srgb, var(--state) 55%, transparent); }
+  #log .user { align-self:flex-end; color:color-mix(in srgb, var(--volt) 72%, white);
+               background:color-mix(in srgb, var(--volt) 9%, transparent);
+               border-right:2px solid color-mix(in srgb, var(--volt) 50%, transparent); }
+  @keyframes rise { from { opacity:0; transform:translateY(8px); } }
+
+  footer { display:flex; gap:10px; justify-content:flex-end;
+           padding:10px 20px calc(16px + env(safe-area-inset-bottom)); }
+  #text-input { flex:1; display:none; background:var(--panel); border:1px solid var(--line);
+    border-radius:999px; color:var(--text); font:inherit; font-size:15px; padding:13px 18px; outline:none;
+    transition:border-color .2s, box-shadow .2s; }
+  #text-input:focus { border-color:color-mix(in srgb, var(--volt) 55%, transparent);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--volt) 14%, transparent); }
+  #kbd-toggle { background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    color:var(--dim); font-size:17px; padding:0 16px; min-height:46px; cursor:pointer; transition:color .2s; }
+  #kbd-toggle:hover { color:var(--text); }
+
+  /* ---- settings ---- */
+  dialog { background:rgba(13,16,23,.92); color:var(--text); border:1px solid var(--line);
+           border-radius:20px; padding:24px; width:min(92vw,430px);
+           backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+  dialog::backdrop { background:rgba(3,4,7,.72); }
+  dialog h2 { font-family:var(--display); font-size:13px; font-weight:600; letter-spacing:.22em;
+              text-transform:uppercase; margin-bottom:14px; }
+  dialog label { display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+                 color:var(--dim); margin:14px 0 5px; }
+  dialog input, dialog select { width:100%; background:#0a0d13; border:1px solid var(--line);
+    border-radius:10px; color:var(--text); font:inherit; font-size:14px; padding:11px; }
+  dialog .voice-row { display:flex; gap:8px; }
+  dialog .voice-row select { flex:1; }
+  dialog .voice-row button { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    color:var(--text); font:inherit; font-size:13px; padding:0 14px; cursor:pointer; }
+  dialog .hint { font-size:11px; color:var(--dim); margin-top:5px; line-height:1.55; }
+  dialog .note { font-size:11.5px; color:var(--dim); margin-top:14px; line-height:1.6; }
+  dialog .row { display:flex; gap:10px; margin-top:20px; }
+  dialog .row button { flex:1; padding:13px; border-radius:12px; border:none; font-size:14px; cursor:pointer; }
+  #save-btn { background:var(--volt); color:#0c1005; font-family:var(--display); font-weight:600; letter-spacing:.06em; }
+  #close-btn { background:var(--panel); border:1px solid var(--line); color:var(--text); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation:none !important; transition:none !important; }
+  }
 </style>
 </head>
 <body data-state="idle">
@@ -67,8 +164,9 @@
 </header>
 
 <main>
-  <button id="orb">Start</button>
+  <div id="orb-wrap"><button id="orb">Start</button></div>
   <div id="status">Tap Start when you're ready</div>
+  <div id="eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
   <div id="email-card">
     <div class="from"></div>
     <div class="subject"></div>
@@ -93,11 +191,11 @@
   <label>Speech rate (0.8 &ndash; 1.5)</label>
   <input id="cfg-rate" type="number" step="0.1" min="0.8" max="1.5">
   <label>Device voice</label>
-  <div style="display:flex;gap:8px">
-    <select id="cfg-voice" style="flex:1;background:var(--bg);border:1px solid #30363d;border-radius:8px;color:var(--text);font-size:15px;padding:10px"></select>
-    <button id="cfg-test" style="background:#30363d;border:none;border-radius:8px;color:var(--text);font-size:14px;padding:0 14px;cursor:pointer">Test</button>
+  <div class="voice-row">
+    <select id="cfg-voice"></select>
+    <button id="cfg-test">Test</button>
   </div>
-  <div style="font-size:12px;color:var(--dim);margin-top:4px">iOS Safari can't access downloaded Premium voices (Ava, Zoe) &mdash; only the system voices listed here. For a truly natural voice, add an ElevenLabs key below.</div>
+  <div class="hint">iOS Safari can't access downloaded Premium voices (Ava, Zoe) &mdash; only the system voices listed here. For a truly natural voice, add an ElevenLabs key below.</div>
   <label>ElevenLabs API key (optional &mdash; most natural voice)</label>
   <input id="cfg-eleven" type="password" placeholder="leave empty to use device voice">
   <div class="note">Keys are stored only in this browser's localStorage on your device and sent only to Google / Anthropic APIs. Setup steps are in the README.</div>
